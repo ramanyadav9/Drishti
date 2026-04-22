@@ -149,7 +149,7 @@ Event Generator  ─────────────────────
 SSE Broadcast ───────────────────────────  Real-time push to all connected frontends
 ```
 
-<img src="assets/Query Processing Flow.png" alt="Query Pipeline" width="750"/>
+<img src="assets/architecture.png" alt="System Architecture" width="800"/>
 
 ---
 
@@ -188,7 +188,7 @@ LLM Generation ─────────────────────�
 Response + Source Citations
 ```
 
-<img src="assets/architecture.png" alt="RAG Architecture" width="750"/>
+<img src="assets/Query Processing Flow.png" alt="Query Pipeline" width="750"/>
 
 ### Example Queries
 
