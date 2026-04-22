@@ -86,33 +86,6 @@ The system processes live camera feeds through a multi-stage AI pipeline, conver
 
 Three independently deployable microservices over HTTP REST + SSE, with PostgreSQL as the shared data layer.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│              FRONTEND — React + Vite (Port 3000)            │
-│   Dashboard | Cameras | Events | Zones | Faces | Chat | AI  │
-└──────────────────┬──────────────────────┬───────────────────┘
-                   │ /api/v1 proxy        │ /intel proxy
-                   ▼                      ▼
-   ┌───────────────────────┐   ┌──────────────────────────┐
-   │  BACKEND (Port 8000)  │   │  INTELLIGENCE (Port 8100) │
-   │                       │   │                           │
-   │  AI Detection Pipeline│   │  Query Processor          │
-   │  YOLOv8n Detection    │   │  Intent Classifier        │
-   │  ByteTrack Tracking   │   │  MCP Tool Router          │
-   │  InsightFace + FAISS  │   │  ChromaDB Vector Search   │
-   │  MediaPipe Pose       │   │  Context Builder (4k cap) │
-   │  Zone Checker         │   │  LLM Generation           │
-   │  Event Queue (1000)   │   │  (Ollama Cloud API)       │
-   └──────────┬────────────┘   └─────────────┬────────────┘
-              │ write                         │ read-only
-              ▼                               ▼
-        ┌─────────────────────────────────────────┐
-        │         PostgreSQL (Port 5432)           │
-        │  Tables: users, cameras, zones,          │
-        │          events, faces                   │
-        └─────────────────────────────────────────┘
-```
-
 📐 Full architecture diagram:
 
 <img src="assets/System Architecture (1).png" alt="System Architecture" width="800"/>
@@ -123,32 +96,6 @@ Three independently deployable microservices over HTTP REST + SSE, with PostgreS
 
 Each camera feed runs in a dedicated `DrishtiProcessor` thread. Every frame goes through this sequence:
 
-```
-Frame
-  │
-  ▼
-YOLOv8n  ──────────────────────────────  Person detection (30 FPS, CUDA)
-  │
-  ▼
-ByteTrack  ─────────────────────────────  Persistent track IDs (2-stage association,
-  │                                        threshold: 0.25, buffer: 60 frames)
-  ▼
-InsightFace + FAISS  ────────────────────  512-dim face embeddings + similarity search
-  │                                        Two-tier threshold: 0.35 (registered)
-  │                                        0.50 (auto-detected), hard block at 0.30
-  ▼
-MediaPipe Pose  ─────────────────────────  Standing / Sitting / Lying classification
-  │
-  ▼
-Zone Checker  ───────────────────────────  6-point polygon intersection (cv2.pointPolygonTest)
-  │                                        Restricted (severity 9), Loitering (5–7)
-  ▼
-Event Generator  ────────────────────────  State-change detection, 5-sec cooldown
-  │                                        Queue (maxsize 1000) → PostgreSQL @ 10 Hz
-  ▼
-SSE Broadcast ───────────────────────────  Real-time push to all connected frontends
-```
-
 <img src="assets/architecture.png" alt="System Architecture" width="800"/>
 
 ---
@@ -156,37 +103,6 @@ SSE Broadcast ──────────────────────
 ## 🤖 RAG + MCP Query Pipeline
 
 The intelligence service is the core research contribution of Drishti. It combines SQL precision with semantic search under a strict context budget.
-
-```
-User Query: "Where was Raman last seen?"
-      │
-      ▼
-Intent Classifier ──────────────────────  5 categories:
-      │                                    PERSON_LOOKUP, ZONE_QUERY,
-      │                                    EVENT_SEARCH, SUMMARY, GENERAL
-      ▼
-MCP Tool Router ──────────────────────── 5 SQL-backed tools:
-      │                                    tool_person_tracker()
-      │                                    tool_zone_monitor()
-      │                                    tool_recent_events()
-      │                                    tool_event_stats()
-      │                                    tool_occupancy()
-      ├──────────────────────────────────
-      │
-ChromaDB Vector Search ─────────────────  384-dim all-MiniLM-L6-v2 embeddings
-      │                                    k=8 semantic matches
-      ▼
-Context Builder ─────────────────────── Budget: 4,000 chars total
-      │                                   MCP: ≤1,500 chars per tool
-      │                                   Vector: remainder
-      │                                   Avg utilization: ~2,800 chars
-      ▼
-LLM Generation ─────────────────────── Ollama Cloud (devstral-2:123b)
-      │                                  Fallback: qwen3.5:397b
-      │                                  History: 20 turns per session
-      ▼
-Response + Source Citations
-```
 
 <img src="assets/Query Processing Flow.png" alt="Query Pipeline" width="750"/>
 
